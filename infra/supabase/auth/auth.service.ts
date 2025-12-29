@@ -4,7 +4,7 @@
 //
 // Provides: Google OAuth, Email/Password, Session management
 
-import { getSupabaseClient, isSupabaseConfigured } from './client';
+import { getSupabaseClient, isSupabaseConfigured } from '../client';
 
 /**
  * User type matching Firebase User interface for compatibility

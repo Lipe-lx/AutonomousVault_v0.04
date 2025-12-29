@@ -8,6 +8,9 @@ export * from './env';
 // Auth
 export * from './auth/auth.service';
 
+// Setup Wizard
+export * from './setup-wizard.service';
+
 // Edge Functions (types only)
 export type {
     DealerCycleRequest,
@@ -18,3 +21,4 @@ export type {
 
 // Monetization
 export * from './monetization/limits.stub';
+

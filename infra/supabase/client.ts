@@ -6,6 +6,8 @@
 // - VITE_SUPABASE_URL
 // - VITE_SUPABASE_ANON_KEY
 
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+
 /**
  * Supabase client configuration type
  */
@@ -22,7 +24,7 @@ export function getSupabaseConfig(): SupabaseConfig {
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
     if (!url || !anonKey) {
-        console.warn('[Supabase] Missing environment variables. Auth will not work.');
+        console.warn('[Supabase] Missing environment variables. Connect via Setup Wizard.');
         return {
             url: '',
             anonKey: ''
@@ -33,21 +35,16 @@ export function getSupabaseConfig(): SupabaseConfig {
 }
 
 /**
- * Supabase client singleton
- * 
- * Usage (when @supabase/supabase-js is installed):
- * ```typescript
- * import { createClient } from '@supabase/supabase-js';
- * import { getSupabaseConfig } from './client';
- * 
- * const config = getSupabaseConfig();
- * export const supabase = createClient(config.url, config.anonKey);
- * ```
+ * Connection status
  */
+export interface ConnectionStatus {
+    connected: boolean;
+    projectId: string | null;
+    error: string | null;
+}
 
-// Placeholder for actual client creation
-// Will be implemented when @supabase/supabase-js is added
-let supabaseClient: any = null;
+// Supabase client singleton
+let supabaseClient: SupabaseClient | null = null;
 
 /**
  * Initialize Supabase client
@@ -62,9 +59,13 @@ export async function initializeSupabase(): Promise<boolean> {
     }
 
     try {
-        // When @supabase/supabase-js is installed:
-        // const { createClient } = await import('@supabase/supabase-js');
-        // supabaseClient = createClient(config.url, config.anonKey);
+        supabaseClient = createClient(config.url, config.anonKey, {
+            auth: {
+                autoRefreshToken: true,
+                persistSession: true,
+                detectSessionInUrl: true,
+            },
+        });
 
         console.log('[Supabase] Client initialized successfully');
         return true;
@@ -75,9 +76,68 @@ export async function initializeSupabase(): Promise<boolean> {
 }
 
 /**
+ * Initialize Supabase with dynamic credentials (from Setup Wizard)
+ */
+export async function initializeSupabaseWithCredentials(
+    url: string,
+    anonKey: string
+): Promise<ConnectionStatus> {
+    try {
+        // Validate URL format
+        if (!url.startsWith('https://') || !url.includes('.supabase.co')) {
+            return {
+                connected: false,
+                projectId: null,
+                error: 'Invalid Supabase URL format',
+            };
+        }
+
+        // Create client
+        const client = createClient(url, anonKey, {
+            auth: {
+                autoRefreshToken: true,
+                persistSession: true,
+                detectSessionInUrl: true,
+            },
+        });
+
+        // Test connection by fetching auth settings
+        const { error } = await client.auth.getSession();
+
+        if (error) {
+            return {
+                connected: false,
+                projectId: null,
+                error: `Connection test failed: ${error.message}`,
+            };
+        }
+
+        // Extract project ID from URL
+        const projectId = url.split('//')[1]?.split('.')[0] || null;
+
+        // Store client
+        supabaseClient = client;
+
+        console.log('[Supabase] Connected to project:', projectId);
+
+        return {
+            connected: true,
+            projectId,
+            error: null,
+        };
+    } catch (error) {
+        return {
+            connected: false,
+            projectId: null,
+            error: error instanceof Error ? error.message : 'Unknown error',
+        };
+    }
+}
+
+/**
  * Get the Supabase client instance
  */
-export function getSupabaseClient(): any {
+export function getSupabaseClient(): SupabaseClient | null {
     if (!supabaseClient) {
         console.warn('[Supabase] Client not initialized. Call initializeSupabase() first.');
     }
@@ -90,4 +150,59 @@ export function getSupabaseClient(): any {
 export function isSupabaseConfigured(): boolean {
     const config = getSupabaseConfig();
     return !!(config.url && config.anonKey);
+}
+
+/**
+ * Check if Supabase client is connected
+ */
+export function isSupabaseConnected(): boolean {
+    return supabaseClient !== null;
+}
+
+/**
+ * Disconnect Supabase client
+ */
+export function disconnectSupabase(): void {
+    supabaseClient = null;
+    console.log('[Supabase] Client disconnected');
+}
+
+/**
+ * Get connection status
+ */
+export async function getConnectionStatus(): Promise<ConnectionStatus> {
+    if (!supabaseClient) {
+        return {
+            connected: false,
+            projectId: null,
+            error: 'Client not initialized',
+        };
+    }
+
+    try {
+        const { error } = await supabaseClient.auth.getSession();
+
+        if (error) {
+            return {
+                connected: false,
+                projectId: null,
+                error: error.message,
+            };
+        }
+
+        const config = getSupabaseConfig();
+        const projectId = config.url.split('//')[1]?.split('.')[0] || null;
+
+        return {
+            connected: true,
+            projectId,
+            error: null,
+        };
+    } catch (error) {
+        return {
+            connected: false,
+            projectId: null,
+            error: error instanceof Error ? error.message : 'Unknown error',
+        };
+    }
 }
